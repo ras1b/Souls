@@ -1,0 +1,18 @@
+name: Souls
+version: 1.0.0
+main: com.ras1b.Souls.Souls
+author: ras1b
+api-version: 1.21
+description: Souls plugin by ras1b
+
+commands:
+  souls:
+    description: View your Souls count
+    usage: /souls
+    permission: souls.view
+    permission-message: You do not have permission to check souls.
+
+permissions:
+  souls.view:
+    description: Allows a player to check their souls
+    default: true
