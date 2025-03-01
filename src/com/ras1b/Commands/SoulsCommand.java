@@ -38,7 +38,8 @@ public class SoulsCommand implements CommandExecutor {
         // If a player name is provided, fetch their souls
         if (args.length == 1) {
             String targetName = args[0];
-            OfflinePlayer targetPlayer = Bukkit.getOfflinePlayer(targetName);
+            @SuppressWarnings("deprecation")
+			OfflinePlayer targetPlayer = Bukkit.getOfflinePlayer(targetName);
 
             if (targetPlayer == null) {
                 sender.sendMessage("§cCould not find player " + targetName + "!");
@@ -51,7 +52,7 @@ public class SoulsCommand implements CommandExecutor {
             if (targetSouls > 0) {
                 sender.sendMessage("§6" + targetName + " has " + targetSouls + " Souls!");
             } else {
-                sender.sendMessage("§e" + targetName + " has no Souls!");
+                sender.sendMessage("§6" + targetName + " has no Souls!");
             }
             return true;
         }
