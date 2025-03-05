@@ -23,7 +23,6 @@ public class SoulsCommand implements CommandExecutor {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         KillsConfig killsConfig = plugin.getKillsConfig();
 
-        // If no arguments, show sender's own souls
         if (args.length == 0) {
             if (sender instanceof Player) {
                 Player player = (Player) sender;
@@ -35,11 +34,22 @@ public class SoulsCommand implements CommandExecutor {
             return true;
         }
 
-        // If a player name is provided, fetch their souls
+        if (args[0].equalsIgnoreCase("reload") || args[0].equalsIgnoreCase("rl")) {
+            if (!sender.hasPermission("souls.reload")) {
+                sender.sendMessage("§cYou do not have permission to reload the plugin!");
+                return true;
+            }
+
+            sender.sendMessage("§6[Souls] Reloading plugin...");
+            plugin.reloadPlugin();
+            sender.sendMessage("§a[Souls] Plugin successfully reloaded!");
+            return true;
+        }
+
         if (args.length == 1) {
             String targetName = args[0];
             @SuppressWarnings("deprecation")
-			OfflinePlayer targetPlayer = Bukkit.getOfflinePlayer(targetName);
+            OfflinePlayer targetPlayer = Bukkit.getOfflinePlayer(targetName);
 
             if (targetPlayer == null) {
                 sender.sendMessage("§cCould not find player " + targetName + "!");
@@ -49,16 +59,11 @@ public class SoulsCommand implements CommandExecutor {
             UUID targetUUID = targetPlayer.getUniqueId();
             int targetSouls = killsConfig.getSouls(targetUUID);
 
-            if (targetSouls > 0) {
-                sender.sendMessage("§6" + targetName + " has " + targetSouls + " Souls!");
-            } else {
-                sender.sendMessage("§6" + targetName + " has no Souls!");
-            }
+            sender.sendMessage("§6" + targetName + " has " + targetSouls + " Souls!");
             return true;
         }
 
-        // If too many arguments, show usage message
-        sender.sendMessage("§cUsage: /souls [player]");
+        sender.sendMessage("§cUsage: /souls [player|reload|rl]");
         return true;
     }
 }

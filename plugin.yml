@@ -16,3 +16,6 @@ permissions:
   souls.view:
     description: Allows a player to check their souls
     default: true
+  souls.reload:
+    description: Allows reloading the plugin
+    default: op
