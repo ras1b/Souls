@@ -17,7 +17,7 @@ public class KillsConfig {
 
     public KillsConfig(JavaPlugin plugin) {
         this.plugin = plugin;
-        this.loadConfig();  // Ensure config is loaded as soon as the object is created
+        this.loadConfig(); // Ensure config is loaded as soon as the object is created
     }
 
     public void loadConfig() {
@@ -27,7 +27,9 @@ public class KillsConfig {
             plugin.getLogger().warning("[Souls] Couldn't find an existing kills.yml, creating one...");
             plugin.getDataFolder().mkdirs();
             try {
-                file.createNewFile();
+                if (file.createNewFile()) {
+                    plugin.getLogger().info("[Souls] Created new kills.yml file.");
+                }
             } catch (IOException e) {
                 plugin.getLogger().severe("[Souls] Failed to create kills.yml!");
                 e.printStackTrace();
@@ -47,51 +49,45 @@ public class KillsConfig {
         if (config == null) {
             loadConfig();
         }
-        if (!config.contains(uuid.toString())) {
-            config.set(uuid.toString() + ".kills", 0);
-            config.set(uuid.toString() + ".souls", 0);
-            config.set(uuid.toString() + ".name", "Unknown");
-            saveConfig();
-        }
         return config.getInt(uuid.toString() + ".souls", 0);
     }
 
-    public synchronized void addKill(Player player, int soulsGained) {
+    public void addSouls(Player player, int soulsGained) {
         UUID uuid = player.getUniqueId();
+        String playerPath = uuid.toString();
         String playerName = player.getName();
 
-        if (!config.contains(uuid.toString())) {
-            config.set(uuid.toString() + ".kills", 0);
-            config.set(uuid.toString() + ".souls", 0);
-            config.set(uuid.toString() + ".name", playerName);
-        } else {
-            String storedName = config.getString(uuid.toString() + ".name", "Unknown");
-            if (!storedName.equals(playerName)) {
-                config.set(uuid.toString() + ".name", playerName);
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            if (!config.contains(playerPath + ".souls")) {
+                config.set(playerPath + ".souls", 0);
             }
-        }
+            if (!config.contains(playerPath + ".name")) {
+                config.set(playerPath + ".name", playerName);
+            }
 
-        config.set(uuid.toString() + ".kills", getKills(uuid) + 1);
-        config.set(uuid.toString() + ".souls", getSouls(uuid) + soulsGained);
-        saveConfig();
+            // Ensure correct player name is stored
+            if (!config.getString(playerPath + ".name", "Unknown").equals(playerName)) {
+                config.set(playerPath + ".name", playerName);
+            }
+
+            // Update soul count
+            config.set(playerPath + ".souls", getSouls(uuid) + soulsGained);
+            saveConfig();
+        });
     }
+
 
     public synchronized void updatePlayerName(Player player) {
         UUID uuid = player.getUniqueId();
+        String playerPath = uuid.toString();
         String currentName = player.getName();
 
-        if (config.contains(uuid.toString())) {
-            String storedName = config.getString(uuid.toString() + ".name", "Unknown");
-            if (!storedName.equals(currentName)) {
-                config.set(uuid.toString() + ".name", currentName);
-                saveConfig();
-            }
-        } else {
-            config.set(uuid.toString() + ".name", currentName);
-            saveConfig();
+        if (!config.getString(playerPath + ".name", "Unknown").equals(currentName)) {
+            config.set(playerPath + ".name", currentName);
+            saveConfigAsync();
         }
     }
-    
+
     public void saveConfig() {
         try {
             config.save(file);
@@ -99,6 +95,10 @@ public class KillsConfig {
             plugin.getLogger().severe("[Souls] Failed to save kills.yml!");
             e.printStackTrace();
         }
+    }
+
+    public void saveConfigAsync() {
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, this::saveConfig);
     }
 
     public void reload() {

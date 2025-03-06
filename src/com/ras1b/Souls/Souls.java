@@ -1,8 +1,8 @@
 package com.ras1b.Souls;
 
+import java.io.File;
+
 import org.bukkit.Bukkit;
-import org.bukkit.plugin.Plugin;
-import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.ras1b.Commands.SoulsCommand;
@@ -19,7 +19,18 @@ public class Souls extends JavaPlugin {
         instance = this;
         getLogger().info("[Souls] Plugin has been enabled!");
 
-        saveDefaultConfig();
+        // Ensure config folder exists
+        if (!getDataFolder().exists()) {
+            getDataFolder().mkdirs();
+        }
+
+        // Ensure config.yml exists inside the plugin folder
+        File configFile = new File(getDataFolder(), "config.yml");
+        if (!configFile.exists()) {
+            saveResource("config.yml", false);
+        }
+
+        reloadConfig();
         killsConfig = new KillsConfig(this);
 
         if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
@@ -42,6 +53,7 @@ public class Souls extends JavaPlugin {
 
         getLogger().info("[Souls] Plugin setup complete!");
     }
+
 
     @Override
     public void onDisable() {
@@ -66,20 +78,17 @@ public class Souls extends JavaPlugin {
 
     public void reloadPlugin() {
         getLogger().info("[Souls] Reloading plugin...");
-        PluginManager pluginManager = Bukkit.getPluginManager();
-        Plugin plugin = pluginManager.getPlugin("Souls");
+        reloadConfig(); // Reload config.yml
 
-        if (plugin != null) {
-            // Refresh placeholder data before reloading
-            reloadConfig(); // Reload config.yml
+        // Run leaderboard update asynchronously
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
             SoulsPlaceholder.updateTopSouls();
-            
-            pluginManager.disablePlugin(plugin);
-            pluginManager.enablePlugin(plugin);
-            getLogger().info("[Souls] Plugin reload complete!");
-        } else {
-            getLogger().severe("[Souls] Plugin not found for reloading!");
-        }
+            getLogger().info("[Souls] Leaderboard successfully updated!");
+        });
+
+        getLogger().info("[Souls] Plugin reload complete!");
     }
+
+
 
 }
