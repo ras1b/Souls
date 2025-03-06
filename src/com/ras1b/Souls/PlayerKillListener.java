@@ -14,9 +14,11 @@ import me.clip.placeholderapi.PlaceholderAPI;
 public class PlayerKillListener implements Listener {
 
     private final Souls plugin;
+    private final KillsConfig killsConfig;
 
     public PlayerKillListener(Souls plugin) {
         this.plugin = plugin;
+        this.killsConfig = plugin.getKillsConfig();
     }
 
     @EventHandler
@@ -24,28 +26,25 @@ public class PlayerKillListener implements Listener {
         Player victim = event.getEntity();
         Player killer = victim.getKiller();
 
-        if (killer != null) {
-            KillsConfig killsConfig = plugin.getKillsConfig();
-
-            // Award souls on kill (adjust value as needed)
-            int soulsGained = 5;
-            killsConfig.addKill(killer, soulsGained);
-
-            // Get the updated soul count
-            int newSoulCount = killsConfig.getSouls(killer.getUniqueId());
-
-            // Notify the killer
-            killer.sendMessage("§6You gained " + soulsGained + " Souls! Total Souls: " + newSoulCount);
-
-            // **Live leaderboard update**
-            SoulsPlaceholder.updateTopSouls(); // Refresh top souls list
-
-            // **Force PlaceholderAPI refresh after leaderboard update**
-            Bukkit.getScheduler().runTaskLater(plugin, SoulsPlaceholder::updateTopSouls, 5L);
-
-            // **Update the player's TAB list**
-            updateTabList(killer, newSoulCount);
+        if (killer == null) {
+            return;
         }
+
+        // Fetch the soul reward from config.yml
+        int soulsGained = plugin.getConfig().getInt("souls.per-kill", 5);
+        killsConfig.addSouls(killer, soulsGained);
+
+        // Get the updated soul count
+        int newSoulCount = killsConfig.getSouls(killer.getUniqueId());
+
+        // Notify the killer
+        killer.sendMessage("§6You gained " + soulsGained + " Souls! Total Souls: " + newSoulCount);
+
+        // **Live leaderboard update** (Async for better performance)
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, SoulsPlaceholder::updateTopSouls);
+
+        // **Update the player's TAB list**
+        updateTabList(killer, newSoulCount);
     }
 
 
@@ -60,9 +59,8 @@ public class PlayerKillListener implements Listener {
 
         // Check if the TAB plugin is installed and update the player's name
         if (plugin.getServer().getPluginManager().getPlugin("TAB") != null) {
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                player.setPlayerListName(updatedTabName);
-            });
+            Bukkit.getScheduler().runTask(plugin, () -> player.setPlayerListName(updatedTabName));
         }
     }
+
 }

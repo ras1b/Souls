@@ -1,7 +1,14 @@
 package com.ras1b.Placeholders;
 
 import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -12,16 +19,17 @@ import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 public class SoulsPlaceholder extends PlaceholderExpansion {
 
     private final Plugin plugin;
-    private static final Map<String, Integer> topSouls = new LinkedHashMap<>();
+    private static final Map<String, Integer> topSouls = new ConcurrentHashMap<>();
+    private static final String HOLOGRAM_NAME = "topsouls";
 
     public SoulsPlaceholder(Plugin plugin) {
         this.plugin = plugin;
-        updateTopSouls(); // Load leaderboard data when plugin starts
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, SoulsPlaceholder::updateTopSouls); // Async load
     }
 
     @Override
     public String getIdentifier() {
-        return "souls"; // Placeholder identifier
+        return "souls";
     }
 
     @Override
@@ -36,136 +44,104 @@ public class SoulsPlaceholder extends PlaceholderExpansion {
 
     @Override
     public boolean persist() {
-        return true; // Keep placeholder registered after reload
+        return true;
     }
 
     @Override
     public String onRequest(OfflinePlayer player, String identifier) {
-        if (player == null) return "0"; // If player is null, return 0
+        if (player == null) return "0";
 
-        // Return total soul count for the player
-        if (identifier.equalsIgnoreCase("count")) {
-            return String.valueOf(getSouls(player.getUniqueId()));
-        }
+        // Fetch souls directly instead of relying on cached leaderboard
+        File file = new File(plugin.getDataFolder(), "kills.yml");
+        if (!file.exists()) return "0";
 
-        // Return player's position on the leaderboard
-        if (identifier.equalsIgnoreCase("your_position")) {
-            return getPlayerPosition(player);
-        }
+        YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+        UUID playerUUID = player.getUniqueId();
+        int souls = config.getInt(playerUUID.toString() + ".souls", 0);
 
-        // Return player's soul value
-        if (identifier.equalsIgnoreCase("your_value")) {
-            return String.valueOf(getSouls(player.getUniqueId()));
-        }
-
-        // Loop through placeholders for top 1-10 players
-        for (int i = 1; i <= 10; i++) {
-            if (identifier.equalsIgnoreCase("top_" + i + "_name")) {
-                return getTopPlayerName(i);
-            } else if (identifier.equalsIgnoreCase("top_" + i + "_value")) {
-                return String.valueOf(getTopPlayerSouls(i));
+        return switch (identifier.toLowerCase()) {
+            case "count", "your_value" -> String.valueOf(souls);
+            case "your_position" -> getPlayerPosition(player);
+            default -> {
+                for (int i = 1; i <= 10; i++) {
+                    if (identifier.equalsIgnoreCase("top_" + i + "_name"))
+                        yield getTopPlayerName(i);
+                    if (identifier.equalsIgnoreCase("top_" + i + "_value"))
+                        yield String.valueOf(getTopPlayerSouls(i));
+                }
+                yield null;
             }
-        }
-
-        return null; // Return null if no matching placeholder
+        };
     }
 
-    /**
-     * Loads the top 10 players based on their souls from kills.yml.
-     */
     public static void updateTopSouls() {
-    File file = new File("plugins/Souls/kills.yml");
-    if (!file.exists()) return;
+        Bukkit.getScheduler().runTaskAsynchronously(Bukkit.getPluginManager().getPlugin("Souls"), () -> {
+            File file = new File("plugins/Souls/kills.yml");
+            if (!file.exists()) return;
 
-    YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-    Map<String, Integer> soulsMap = new HashMap<>();
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+            Map<String, Integer> newTopSouls = new HashMap<>();
 
-    // Load all players from kills.yml
-    for (String uuid : config.getKeys(false)) {
-        int souls = config.getInt(uuid + ".souls", 0);
-        String playerName = config.getString(uuid + ".name", "Unknown");
-        soulsMap.put(playerName, souls);
-    }
+            for (String uuid : config.getKeys(false)) {
+                int souls = config.getInt(uuid + ".souls", 0);
+                String playerName = config.getString(uuid + ".name", "Unknown");
+                newTopSouls.put(playerName, souls);
+            }
 
-    // Ensure leaderboard always has 10 players
-    synchronized (topSouls) {
-        topSouls.clear();
-        LinkedHashMap<String, Integer> sorted = sortByValueDescending(soulsMap);
+            LinkedHashMap<String, Integer> sorted = sortByValueDescending(newTopSouls);
 
-        int count = 0;
-        for (Map.Entry<String, Integer> entry : sorted.entrySet()) {
-            topSouls.put(entry.getKey(), entry.getValue());
-            count++;
-            if (count >= 10) break; // Stop at 10 players
-        }
-
-        // Fill remaining spots with placeholders if needed
-        while (topSouls.size() < 10) {
-            topSouls.put("---", 0);
-        }
-    }
-
-    // **Force PlaceholderAPI to refresh and update Hologram**
-    Bukkit.getScheduler().runTaskLaterAsynchronously(Bukkit.getPluginManager().getPlugin("Souls"), () -> {
-        Bukkit.getLogger().info("[Souls] Leaderboard updated live!");
-
-        // Refresh the hologram data if using DecentHolograms
-        Bukkit.getScheduler().runTask(Bukkit.getPluginManager().getPlugin("Souls"), () -> {
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "holograms reload");
+            if (!sorted.equals(topSouls)) {
+                synchronized (topSouls) {
+                    topSouls.clear();
+                    sorted.entrySet().stream().limit(10).forEach(entry -> topSouls.put(entry.getKey(), entry.getValue()));
+                    while (topSouls.size() < 10) topSouls.put("---", 0);
+                }
+                Bukkit.getLogger().info("[Souls] Leaderboard updated.");
+                refreshHologram();
+            }
         });
+    }
 
-    }, 5L);
-}
+    private static void refreshHologram() {
+        Bukkit.getScheduler().runTask(Bukkit.getPluginManager().getPlugin("DecentHolograms"), () -> {
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "holograms refresh " + HOLOGRAM_NAME);
+        });
+    }
 
-    /**
-     * Sorts the players by souls in descending order.
-     */
     private static LinkedHashMap<String, Integer> sortByValueDescending(Map<String, Integer> unsortedMap) {
-        return unsortedMap.entrySet()
-                .stream()
-                .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue())) // Descending order
+        return unsortedMap.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
                 .collect(LinkedHashMap::new, (m, v) -> m.put(v.getKey(), v.getValue()), LinkedHashMap::putAll);
     }
 
-    /**
-     * Gets the player's position in the leaderboard.
-     */
     private String getPlayerPosition(OfflinePlayer player) {
+        String playerName = player.getName();
+        if (playerName == null) return "--";
+
         synchronized (topSouls) {
-            List<String> sortedPlayers = new ArrayList<>(topSouls.keySet());
-            int position = sortedPlayers.indexOf(player.getName()) + 1;
-            return position > 0 ? String.valueOf(position) : "--"; // Show "--" if not in top 10
+            List<Map.Entry<String, Integer>> sortedPlayers = new ArrayList<>(topSouls.entrySet());
+            sortedPlayers.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+
+            int position = 1;
+            for (Map.Entry<String, Integer> entry : sortedPlayers) {
+                if (entry.getKey().equals(playerName)) {
+                    return String.valueOf(position);
+                }
+                position++;
+            }
+            return "--";
         }
     }
 
-    /**
-     * Fetches a player's souls count from kills.yml.
-     */
-    private int getSouls(UUID uuid) {
-        File file = new File(plugin.getDataFolder(), "kills.yml");
-        if (!file.exists()) return 0;
-
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-        return config.getInt(uuid.toString() + ".souls", 0);
-    }
-
-    /**
-     * Gets the name of the top player at a specific rank.
-     */
     private String getTopPlayerName(int rank) {
         synchronized (topSouls) {
-            List<String> sortedPlayers = new ArrayList<>(topSouls.keySet());
-            return (rank <= sortedPlayers.size()) ? sortedPlayers.get(rank - 1) : "---"; // Default "---" if no player
+            return topSouls.keySet().stream().skip(rank - 1).findFirst().orElse("---");
         }
     }
 
-    /**
-     * Gets the soul count of the top player at a specific rank.
-     */
     private int getTopPlayerSouls(int rank) {
         synchronized (topSouls) {
-            List<Integer> sortedSouls = new ArrayList<>(topSouls.values());
-            return (rank <= sortedSouls.size()) ? sortedSouls.get(rank - 1) : 0; // Default 0 if no data
+            return topSouls.values().stream().skip(rank - 1).findFirst().orElse(0);
         }
     }
 }

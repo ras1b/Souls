@@ -4,6 +4,7 @@ main: com.ras1b.Souls.Souls
 author: ras1b
 api-version: 1.21
 description: Souls plugin by ras1b
+depend: [PlaceholderAPI, DecentHolograms]
 
 commands:
   souls:
@@ -11,6 +12,11 @@ commands:
     usage: /souls
     permission: souls.view
     permission-message: You do not have permission to check souls.
+  souls reload:
+    description: Reload the Souls plugin
+    usage: /souls reload
+    permission: souls.reload
+    permission-message: You do not have permission to reload the plugin.
 
 permissions:
   souls.view:
