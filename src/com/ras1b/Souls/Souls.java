@@ -71,6 +71,7 @@ public class Souls extends JavaPlugin {
 
         if (plugin != null) {
             // Refresh placeholder data before reloading
+            reloadConfig(); // Reload config.yml
             SoulsPlaceholder.updateTopSouls();
             
             pluginManager.disablePlugin(plugin);
